@@ -45,18 +45,38 @@ State is written atomically — Swift never blocks on I/O.
 You need a Mac with **Xcode Command Line Tools** (Swift 6.0+) and **Python 3.11+**. Tested on macOS 13+.
 
 ```bash
-# 1. Python data layer
+git clone https://github.com/neri-rnd/agents-usage-bar.git
+cd agents-usage-bar
+./install.sh
+```
+
+That's it. The script will:
+
+1. Verify Python 3.11+ and Swift are present
+2. `pip install --user` the Python package (with `--break-system-packages` for Homebrew Python)
+3. Append the pip-user `bin/` dir to your `~/.zshrc` PATH if not already there
+4. Build `swift/build/AI Monitor.app`
+5. Copy it to `/Applications/`, strip the quarantine attribute, launch it
+
+Re-run anytime — every step is idempotent. Logs at `/tmp/ai-monitor-pip.log` and `/tmp/ai-monitor-build.log` on failure.
+
+### Uninstall
+
+```bash
+./uninstall.sh
+```
+
+Removes the .app, the pip package, runtime state, user config, and the PATH line it added. Leaves your source repo and the rest of your shell config alone.
+
+### Manual install (if you want to know what install.sh does)
+
+```bash
 python3 -m pip install --user --break-system-packages -e .
-# (--break-system-packages is needed on Homebrew Python; harmless elsewhere)
+echo 'export PATH="$(python3 -m site --user-base)/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 
-# Add to PATH if it isn't already (one-time):
-echo 'export PATH="$HOME/Library/Python/3.13/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# 2. Swift menubar app
-cd swift
-./build.sh
+cd swift && ./build.sh
 cp -R "build/AI Monitor.app" /Applications/
+xattr -cr "/Applications/AI Monitor.app"   # strip Gatekeeper quarantine
 open "/Applications/AI Monitor.app"
 ```
 
@@ -80,19 +100,13 @@ Lets you tune plan caps, notification thresholds, per-agent enable flags. Defaul
 
 ## Sharing with a friend
 
+Send them the repo URL. They run:
+
 ```bash
-cd swift && ./build.sh
-# Send them the repo + the built AI Monitor.app
+git clone https://github.com/neri-rnd/agents-usage-bar.git && cd agents-usage-bar && ./install.sh
 ```
 
-They need to:
-
-1. Clone the repo (or just receive the files)
-2. `python3 -m pip install --user --break-system-packages -e <repo>` to get the `monitor` CLI
-3. Drag `AI Monitor.app` into `/Applications/`
-4. **First-launch security gate.** The .app isn't notarized by Apple ($99/year cert), so macOS will block it on first launch: System Settings → Privacy & Security → "Open Anyway". One-time.
-
-Alternative for step 4: `xattr -cr "/Applications/AI Monitor.app"` strips the quarantine attribute.
+The `install.sh` script also runs `xattr -cr` to strip the Gatekeeper quarantine attribute, so they shouldn't hit the unsigned-app warning. If macOS still complains on first launch (rare, depends on how they got the bytes): System Settings → Privacy & Security → "Open Anyway".
 
 If you want a real installer (`.dmg`), look at how [ClaudeUsageBar's build.sh](https://github.com/Artzainnn/ClaudeUsageBar) does it — `hdiutil create` + a layout AppleScript, ~40 extra lines.
 
