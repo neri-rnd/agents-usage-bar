@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+/tmp-*
+
+# ai-monitor runtime state (lives in /tmp; never tracked anyway, but
+# safety for anyone who symlinks /tmp/ai-monitor into the repo)
+/tmp/ai-monitor/
+
+# macOS / editor noise
+.DS_Store
+*.swp
+*.swo
+
+# alternative venv name
+venv/
+
+# Swift build artifacts
+/swift/build/

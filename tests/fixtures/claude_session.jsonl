@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2026-05-22T10:00:00Z","gitBranch":"feat-x","message":{"role":"user","content":[{"type":"text","text":"#thread-title my-thread\nset up tests"}]}}
+{"type":"assistant","timestamp":"2026-05-22T10:00:05Z","message":{"role":"assistant","model":"claude-opus-4-7-20260201","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":500,"cache_read_input_tokens":4000}}}
+{"type":"user","timestamp":"2026-05-22T10:01:00Z","message":{"role":"user","content":[{"type":"text","text":"<ide_opened_file>ignored</ide_opened_file>"}]}}
+{"type":"user","timestamp":"2026-05-22T10:02:00Z","message":{"role":"user","content":[{"type":"text","text":"now run the suite"}]}}
+{"type":"assistant","timestamp":"2026-05-22T10:02:30Z","message":{"role":"assistant","model":"claude-opus-4-7-20260201","content":[{"type":"text","text":"running"}],"usage":{"input_tokens":2000,"output_tokens":300,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
