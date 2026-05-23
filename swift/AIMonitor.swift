@@ -793,17 +793,8 @@ struct ProjectRow: View {
     }
 }
 
-struct SizeKey: PreferenceKey {
-    static let defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        let n = nextValue()
-        if n != .zero { value = n }
-    }
-}
-
 struct ContentView: View {
     @ObservedObject var refresher: Refresher
-    var onSizeChange: (CGSize) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -837,15 +828,12 @@ struct ContentView: View {
             Divider()
             FooterView(refresher: refresher)
         }
+        // Fix width, let height be intrinsic. NSHostingController's
+        // sizingOptions = [.intrinsicContentSize] reads this and sets the
+        // popover's preferredContentSize synchronously, so first-click
+        // popovers are sized correctly before macOS places them.
         .frame(width: 380, alignment: .leading)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: SizeKey.self, value: geo.size)
-            }
-        )
-        .onPreferenceChange(SizeKey.self) { size in
-            if size.height > 0 { onSizeChange(size) }
-        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -938,17 +926,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.animates = false
-        popover.contentSize = NSSize(width: 380, height: 200)
-        let contentView = ContentView(refresher: refresher) { [weak self] size in
-            guard let self = self else { return }
-            // Cap height so very long lists scroll inside SwiftUI rather than
-            // a huge popover offscreen. Width is fixed at 380.
-            let capped = max(120, min(800, size.height))
-            DispatchQueue.main.async {
-                self.popover.contentSize = NSSize(width: 380, height: capped)
-            }
-        }
-        popover.contentViewController = NSHostingController(rootView: contentView)
+        // Initial size — a fallback only; sizingOptions takes over once
+        // SwiftUI lays out.
+        popover.contentSize = NSSize(width: 380, height: 400)
+        let host = NSHostingController(rootView: ContentView(refresher: refresher))
+        // .intrinsicContentSize makes the host controller report the SwiftUI
+        // view's natural size SYNCHRONOUSLY, so the popover is sized correctly
+        // BEFORE it's shown — no first-click clipping race.
+        host.sizingOptions = [.intrinsicContentSize]
+        popover.contentViewController = host
 
         // Auto-update title when state changes
         refresher.$state
