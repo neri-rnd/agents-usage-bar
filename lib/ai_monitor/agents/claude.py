@@ -95,17 +95,29 @@ def project_short(dir_name: str) -> str:
 
 
 def parse_remote_payload(d: dict) -> dict:
-    """Parse `/api/oauth/usage` payload into a dict of windows + extra credits."""
-    def win(key):
+    """Parse `/api/oauth/usage` payload into windows + extra credits.
+
+    Returns:
+      - five_hour:    Current Session (5h) LimitWindow or None
+      - seven_day:    All-models weekly LimitWindow or None
+      - seven_day_sonnet:  Sonnet-only weekly (Pro plan tracks this) or None
+      - seven_day_opus:    Opus-only weekly (Max plan) or None when null
+      - extra:        RemoteUsage if extra_usage.is_enabled else None
+    """
+    def win(key: str, kind: str) -> Optional[LimitWindow]:
         v = d.get(key)
         if not v:
             return None
+        ut = v.get("utilization")
+        if ut is None:
+            return None
         return LimitWindow(
-            kind="rolling_5h" if key == "five_hour" else "rolling_7d",
-            pct=int((v.get("utilization") or 0) + 0.5),
+            kind=kind,
+            pct=int(ut + 0.5),
             resets_at=v.get("resets_at") or None,
             billable=0, cap=0,  # remote endpoint doesn't expose absolute caps
         )
+
     extra = None
     e = d.get("extra_usage") or {}
     if e.get("is_enabled"):
@@ -115,7 +127,13 @@ def parse_remote_payload(d: dict) -> dict:
             limit=str(e.get("monthly_limit") or "0"),
             ccy=str(e.get("currency") or ""),
         )
-    return {"five_hour": win("five_hour"), "seven_day": win("seven_day"), "extra": extra}
+    return {
+        "five_hour":        win("five_hour", "rolling_5h"),
+        "seven_day":        win("seven_day", "rolling_7d"),
+        "seven_day_sonnet": win("seven_day_sonnet", "rolling_7d_sonnet"),
+        "seven_day_opus":   win("seven_day_opus",   "rolling_7d_opus"),
+        "extra":            extra,
+    }
 
 
 def fetch_oauth_token() -> Optional[str]:
@@ -269,7 +287,13 @@ class ClaudeAgent(Agent):
         return AgentState(
             id=self.id, label=self.label,
             window=window,
-            secondary_windows=[w for w in [remote_windows["seven_day"]] if w],
+            secondary_windows=[
+                w for w in [
+                    remote_windows["seven_day"],
+                    remote_windows["seven_day_sonnet"],
+                    remote_windows["seven_day_opus"],
+                ] if w
+            ],
             extra_credits=remote_windows["extra"],
             threads=threads,
             by_model=[{"name": m, "billable": c} for m, c in agg["by_model"].most_common()],

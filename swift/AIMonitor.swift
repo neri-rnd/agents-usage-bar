@@ -218,14 +218,7 @@ enum Format {
             secs = max(0, s)
         } else {
             guard let iso = iso else { return "" }
-            let fmt = ISO8601DateFormatter()
-            fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            var d = fmt.date(from: iso)
-            if d == nil {
-                fmt.formatOptions = [.withInternetDateTime]
-                d = fmt.date(from: iso)
-            }
-            guard let target = d else { return "" }
+            guard let target = parseISO(iso) else { return "" }
             secs = max(0, Int(target.timeIntervalSince(now)))
         }
         if secs < 3600       { return "\(secs / 60)m" }
@@ -235,20 +228,50 @@ enum Format {
         return "\(w)w \(days)d"
     }
 
+    static func parseISO(_ iso: String) -> Date? {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = fmt.date(from: iso) { return d }
+        fmt.formatOptions = [.withInternetDateTime]
+        return fmt.date(from: iso)
+    }
+
+    /// Absolute wall-clock format ("Wed 2:00 PM" / "May 27 2:00 PM") for resets
+    /// that are far enough away that a relative duration is harder to read
+    /// than a date. Matches Anthropic's own UI.
+    static func resetAbsolute(from iso: String?) -> String {
+        guard let iso = iso, let target = parseISO(iso) else { return "" }
+        let cal = Calendar.current
+        let daysAway = cal.dateComponents([.day], from: cal.startOfDay(for: Date()),
+                                          to: cal.startOfDay(for: target)).day ?? 0
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        if daysAway < 7 {
+            f.dateFormat = "EEE h:mm a"   // "Wed 2:00 PM"
+        } else {
+            f.dateFormat = "MMM d h:mm a" // "Jun 3 2:00 PM"
+        }
+        return f.string(from: target)
+    }
+
     static func windowLabel(_ kind: String) -> String {
         switch kind {
-        case "rolling_5h": return "Current Session"
+        case "rolling_5h":         return "Current Session"
         case "rolling_7d", "weekly": return "Weekly"
-        default:           return kind
+        case "rolling_7d_sonnet":  return "Sonnet (weekly)"
+        case "rolling_7d_opus":    return "Opus (weekly)"
+        default:                   return kind
         }
     }
 
-    /// Consistent display order across agents: Current Session (5h) first, Weekly second.
+    /// Consistent display order across agents.
     static func windowSortKey(_ kind: String) -> Int {
         switch kind {
-        case "rolling_5h": return 0
+        case "rolling_5h":           return 0
         case "rolling_7d", "weekly": return 1
-        default:           return 99
+        case "rolling_7d_sonnet":    return 2
+        case "rolling_7d_opus":      return 3
+        default:                     return 99
         }
     }
 }
@@ -435,7 +458,13 @@ struct WindowRow: View {
                 Text("Window expired \(expiredAgo) ago · data stale")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
+            } else if secs >= 86400 {
+                // Weekly-ish: show absolute wall-clock ("Resets Wed 2:00 PM").
+                Text("Resets \(Format.resetAbsolute(from: window.resetsAt))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             } else {
+                // Within 24h: relative ("Resets in 3h 34m") is more useful.
                 Text("Resets in \(Format.reset(from: window.resetsAt))")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
