@@ -23,6 +23,11 @@ class ThreadInfo:
     first_msg: Optional[str]
     branch: Optional[str]
     requests: list[ThreadRequest] = field(default_factory=list)
+    # Context-window usage on the latest assistant turn.
+    # context_pct = round(context_tokens / context_max * 100). None if unknown.
+    context_pct: Optional[int] = None
+    context_tokens: Optional[int] = None
+    context_max: Optional[int] = None
 
 
 @dataclass
