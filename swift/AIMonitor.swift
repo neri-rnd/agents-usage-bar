@@ -796,24 +796,42 @@ struct ProjectRow: View {
 struct ContentView: View {
     @ObservedObject var refresher: Refresher
 
+    /// Cap the scrollable area so the whole popover never exceeds screen
+    /// height. macOS will silently push content off-screen otherwise — the
+    /// bug the user kept hitting on first-click.
+    private var maxScrollHeight: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? 800
+        // Leave room for: menubar (~24), popover arrow + padding (~16),
+        // bottom margin (~40), and the FooterView (~50). The rest is content.
+        return max(200, screen - 130 - 50)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let state = refresher.state {
-                VStack(alignment: .leading, spacing: 18) {
-                    ForEach(Array(state.agents.enumerated()), id: \.element.id) { idx, agent in
-                        if idx > 0 { Divider() }
-                        AgentSection(agent: agent)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(Array(state.agents.enumerated()), id: \.element.id) { idx, agent in
+                            if idx > 0 { Divider() }
+                            AgentSection(agent: agent)
+                        }
+                        if !ActiveSection(state: state).actives.isEmpty {
+                            Divider()
+                            ActiveSection(state: state)
+                        }
+                        if !ProjectsSection(state: state).groups.isEmpty {
+                            Divider()
+                            ProjectsSection(state: state)
+                        }
                     }
-                    if !ActiveSection(state: state).actives.isEmpty {
-                        Divider()
-                        ActiveSection(state: state)
-                    }
-                    if !ProjectsSection(state: state).groups.isEmpty {
-                        Divider()
-                        ProjectsSection(state: state)
-                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(16)
+                .frame(maxHeight: maxScrollHeight)
+                // Hide scrollbar visually but keep scrolling — the cap is
+                // usually generous enough that no scrolling is needed.
+                .scrollIndicators(.never)
+                .scrollBounceBehavior(.basedOnSize)
             } else {
                 VStack {
                     if refresher.isRefreshing {
@@ -828,10 +846,8 @@ struct ContentView: View {
             Divider()
             FooterView(refresher: refresher)
         }
-        // Fix width, let height be intrinsic. NSHostingController's
-        // sizingOptions = [.intrinsicContentSize] reads this and sets the
-        // popover's preferredContentSize synchronously, so first-click
-        // popovers are sized correctly before macOS places them.
+        // Fix width, let height be intrinsic — sizingOptions on the host
+        // controller reads this and sets popover.contentSize synchronously.
         .frame(width: 380, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
     }
