@@ -212,17 +212,22 @@ enum Format {
         return "\(n)"
     }
 
-    static func reset(from iso: String?, now: Date = Date()) -> String {
-        guard let iso = iso else { return "" }
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var d = fmt.date(from: iso)
-        if d == nil {
-            fmt.formatOptions = [.withInternetDateTime]
-            d = fmt.date(from: iso)
+    static func reset(from iso: String?, now: Date = Date(), fallbackSeconds: Int? = nil) -> String {
+        let secs: Int
+        if let s = fallbackSeconds {
+            secs = max(0, s)
+        } else {
+            guard let iso = iso else { return "" }
+            let fmt = ISO8601DateFormatter()
+            fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            var d = fmt.date(from: iso)
+            if d == nil {
+                fmt.formatOptions = [.withInternetDateTime]
+                d = fmt.date(from: iso)
+            }
+            guard let target = d else { return "" }
+            secs = max(0, Int(target.timeIntervalSince(now)))
         }
-        guard let target = d else { return "" }
-        let secs = max(0, Int(target.timeIntervalSince(now)))
         if secs < 3600       { return "\(secs / 60)m" }
         if secs < 86400      { let h = secs / 3600; let m = (secs % 3600) / 60; return "\(h)h \(m)m" }
         if secs < 7 * 86400  { let days = secs / 86400; let h = (secs % 86400) / 3600; return "\(days)d \(h)h" }
@@ -391,20 +396,51 @@ struct WindowRow: View {
                 Text("\(window.pct)%")
                     .font(.system(size: 13, weight: .semibold))
                     .monospacedDigit()
+                    .foregroundStyle(isExpired ? .secondary : .primary)
             }
             ProgressBar(pct: window.pct)
-            if let resetText = resetCaption {
-                Text(resetText)
+                .opacity(isExpired ? 0.5 : 1)
+            captionView
+        }
+    }
+
+    /// When `resets_at` is in the past, the recorded window has already
+    /// rolled over and our cached numbers are stale (likely because the
+    /// agent CLI hasn't been used since — consumption via desktop app or
+    /// web isn't visible to us). Call that out instead of showing a
+    /// misleading "Resets in 0m".
+    private var isExpired: Bool {
+        guard let secs = secondsUntilReset else { return false }
+        return secs <= 0
+    }
+
+    private var secondsUntilReset: Int? {
+        guard let iso = window.resetsAt else { return nil }
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var d = fmt.date(from: iso)
+        if d == nil {
+            fmt.formatOptions = [.withInternetDateTime]
+            d = fmt.date(from: iso)
+        }
+        guard let target = d else { return nil }
+        return Int(target.timeIntervalSinceNow)
+    }
+
+    @ViewBuilder
+    private var captionView: some View {
+        if let secs = secondsUntilReset {
+            if secs <= 0 {
+                let expiredAgo = Format.reset(from: nil, fallbackSeconds: -secs)
+                Text("Window expired \(expiredAgo) ago · data stale")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+            } else {
+                Text("Resets in \(Format.reset(from: window.resetsAt))")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
         }
-    }
-
-    /// "Resets in 2h 7m" / "Resets Mon 2:59 PM" / nil if no resets_at.
-    private var resetCaption: String? {
-        let r = Format.reset(from: window.resetsAt)
-        return r.isEmpty ? nil : "Resets in \(r)"
     }
 }
 
