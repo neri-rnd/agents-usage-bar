@@ -709,14 +709,14 @@ struct ThreadRow: View {
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 50, alignment: .trailing)
             if let ctx = thread.contextPct {
-                // Cap display at 100 — Codex's last_token_usage can exceed the
-                // model_context_window in edge cases (history not yet compacted,
-                // or prior turn's cumulative input). Real context never exceeds
-                // 100% from the model's perspective.
-                let display = min(100, ctx)
-                Text("ctx \(display)%")
+                // Show REMAINING context (headroom) — what most users want to
+                // see at a glance: "how much room do I have left before
+                // compaction?". Cap at [0, 100] for sanity.
+                let used = min(100, max(0, ctx))
+                let remaining = 100 - used
+                Text("ctx \(remaining)%")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(display >= 80 ? .orange : .secondary)
+                    .foregroundStyle(remaining <= 20 ? .orange : .secondary)
                     .help(ctxTooltip)
             }
             Text(label)
@@ -732,7 +732,8 @@ struct ThreadRow: View {
         guard let tok = thread.contextTokens, let max = thread.contextMax else {
             return ""
         }
-        return "\(Format.tokens(tok)) / \(Format.tokens(max)) tokens in context"
+        let free = Swift.max(0, max - tok)
+        return "\(Format.tokens(tok)) used / \(Format.tokens(max)) total · \(Format.tokens(free)) free"
     }
 }
 
