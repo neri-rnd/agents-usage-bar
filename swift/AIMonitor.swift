@@ -855,20 +855,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var claudePct: Int? = nil
         var codexPct: Int? = nil
         for a in state.agents {
-            guard let w = a.window else { continue }
-            if a.id == "claude" { claudePct = w.pct }
-            else if a.id == "codex" { codexPct = w.pct }
+            // Tray always shows the *Current Session* (5h) percentage — that's
+            // the "right now" signal. The weekly window lives in the dropdown.
+            // For Claude the 5h is the primary `window`; for Codex it's a
+            // secondary (Codex's tray-facing primary is weekly). Fall back to
+            // window.pct if no 5h is present.
+            let fiveHour = findFiveHourWindow(agent: a)?.pct ?? a.window?.pct
+            if a.id == "claude" { claudePct = fiveHour }
+            else if a.id == "codex" { codexPct = fiveHour }
         }
         button.image = TrayComposite.render(claudePct: claudePct, codexPct: codexPct)
         button.title = ""
-        // SwiftUI accessibility hint for screen readers
         if claudePct != nil || codexPct != nil {
             let parts = [
-                claudePct.map { "Claude \($0)%" },
-                codexPct.map  { "Codex \($0)%" },
+                claudePct.map { "Claude (session) \($0)%" },
+                codexPct.map  { "Codex (session) \($0)%" },
             ].compactMap { $0 }
             button.toolTip = parts.joined(separator: " · ")
         }
+    }
+
+    /// Find the 5h-session window for an agent, regardless of whether it sits
+    /// in `window` (Claude) or `secondaryWindows` (Codex).
+    private func findFiveHourWindow(agent: AgentState) -> LimitWindow? {
+        if let w = agent.window, w.kind == "rolling_5h" { return w }
+        for w in agent.secondaryWindows where w.kind == "rolling_5h" { return w }
+        return nil
     }
 
     @objc private func togglePopover() {
