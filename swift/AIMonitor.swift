@@ -793,18 +793,18 @@ struct ProjectRow: View {
     }
 }
 
+/// Total popover height. Computed once at first render based on the screen.
+/// A fixed height makes positioning predictable — the popover always fits
+/// below the menubar arrow, no first-click clipping race, no overflow.
+let POPOVER_HEIGHT: CGFloat = {
+    let screen = NSScreen.main?.visibleFrame.height ?? 800
+    // Hard ceiling at 620 (most users have ≥1080px displays); never go
+    // below 380 (degenerate state).
+    return max(380, min(620, screen - 140))
+}()
+
 struct ContentView: View {
     @ObservedObject var refresher: Refresher
-
-    /// Cap the scrollable area so the whole popover never exceeds screen
-    /// height. macOS will silently push content off-screen otherwise — the
-    /// bug the user kept hitting on first-click.
-    private var maxScrollHeight: CGFloat {
-        let screen = NSScreen.main?.visibleFrame.height ?? 800
-        // Leave room for: menubar (~24), popover arrow + padding (~16),
-        // bottom margin (~40), and the FooterView (~50). The rest is content.
-        return max(200, screen - 130 - 50)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -827,8 +827,7 @@ struct ContentView: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: maxScrollHeight)
-                .scrollIndicators(.never)
+                .scrollIndicators(.hidden)
             } else {
                 VStack {
                     if refresher.isRefreshing {
@@ -836,17 +835,13 @@ struct ContentView: View {
                     }
                     Text("no data yet").foregroundStyle(.secondary)
                 }
-                .frame(height: 80)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             Divider()
             FooterView(refresher: refresher)
         }
-        // Fix width, let height be intrinsic — sizingOptions on the host
-        // controller reads this and sets popover.contentSize synchronously.
-        .frame(width: 380, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 380, height: POPOVER_HEIGHT)
     }
 }
 
@@ -939,15 +934,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover = NSPopover()
         popover.behavior = .transient
         popover.animates = false
-        // Initial size — a fallback only; sizingOptions takes over once
-        // SwiftUI lays out.
-        popover.contentSize = NSSize(width: 380, height: 400)
-        let host = NSHostingController(rootView: ContentView(refresher: refresher))
-        // .intrinsicContentSize makes the host controller report the SwiftUI
-        // view's natural size SYNCHRONOUSLY, so the popover is sized correctly
-        // BEFORE it's shown — no first-click clipping race.
-        host.sizingOptions = [.intrinsicContentSize]
-        popover.contentViewController = host
+        // Fixed size — predictable positioning, no clipping race. Inner
+        // ScrollView handles overflow. Matches the .frame() in ContentView.
+        popover.contentSize = NSSize(width: 380, height: POPOVER_HEIGHT)
+        popover.contentViewController = NSHostingController(rootView: ContentView(refresher: refresher))
 
         // Auto-update title when state changes
         refresher.$state
