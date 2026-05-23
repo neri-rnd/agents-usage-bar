@@ -100,4 +100,9 @@ def test_claude_remote_parse_handles_oauth_payload():
 
 def test_claude_remote_parse_missing_keys():
     from ai_monitor.agents.claude import parse_remote_payload
-    assert parse_remote_payload({}) == {"five_hour": None, "seven_day": None, "extra": None}
+    out = parse_remote_payload({})
+    assert out["five_hour"] is None
+    assert out["seven_day"] is None
+    assert out["seven_day_sonnet"] is None
+    assert out["seven_day_opus"] is None
+    assert out["extra"] is None
