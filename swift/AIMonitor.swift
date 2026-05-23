@@ -828,10 +828,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: maxScrollHeight)
-                // Hide scrollbar visually but keep scrolling — the cap is
-                // usually generous enough that no scrolling is needed.
                 .scrollIndicators(.never)
-                .scrollBounceBehavior(.basedOnSize)
             } else {
                 VStack {
                     if refresher.isRefreshing {
