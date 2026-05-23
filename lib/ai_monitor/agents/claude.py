@@ -234,7 +234,13 @@ class ClaudeAgent(Agent):
         files = list(self._recent_transcripts())
 
         # Remote first (so we can anchor the local window on the server's reset).
-        remote_windows = {"five_hour": None, "seven_day": None, "extra": None}
+        remote_windows = {
+            "five_hour": None,
+            "seven_day": None,
+            "seven_day_sonnet": None,
+            "seven_day_opus": None,
+            "extra": None,
+        }
         if not self.remote_disabled:
             token = fetch_oauth_token()
             if token:
