@@ -709,9 +709,14 @@ struct ThreadRow: View {
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 50, alignment: .trailing)
             if let ctx = thread.contextPct {
-                Text("ctx \(ctx)%")
+                // Cap display at 100 — Codex's last_token_usage can exceed the
+                // model_context_window in edge cases (history not yet compacted,
+                // or prior turn's cumulative input). Real context never exceeds
+                // 100% from the model's perspective.
+                let display = min(100, ctx)
+                Text("ctx \(display)%")
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(ctx >= 80 ? .orange : .secondary)
+                    .foregroundStyle(display >= 80 ? .orange : .secondary)
                     .help(ctxTooltip)
             }
             Text(label)
