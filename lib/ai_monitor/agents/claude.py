@@ -84,6 +84,38 @@ def aggregate_window(files: Iterable, since_s: int, midnight_s: int) -> dict:
     }
 
 
+def context_usage_for_session(msgs: Iterable[dict]) -> Optional[tuple[int, int]]:
+    """Return (current_context_tokens, model_context_window) from the latest
+    assistant turn in the session. Approximates what Claude Code's /context
+    command shows: total input the model sees on the next turn.
+    """
+    last_usage = None
+    last_model = None
+    for m in msgs:
+        if m.get("type") != "assistant":
+            continue
+        msg = m.get("message") or {}
+        u = msg.get("usage")
+        if u:
+            last_usage = u
+            last_model = msg.get("model")
+    if not last_usage:
+        return None
+    cur = (
+        (last_usage.get("input_tokens") or 0)
+        + (last_usage.get("cache_read_input_tokens") or 0)
+        + (last_usage.get("cache_creation_input_tokens") or 0)
+    )
+    # Heuristic on context window. Most Claude models are 200k; the 1M variant
+    # encodes "[1m]" in the model id string. cur > 200k → assume 1M.
+    name = (last_model or "").lower()
+    if "1m" in name or cur > 200_000:
+        max_ctx = 1_000_000
+    else:
+        max_ctx = 200_000
+    return cur, max_ctx
+
+
 def project_short(dir_name: str) -> str:
     """Decode Claude's project dir name to a human-readable short name.
 
@@ -261,14 +293,25 @@ class ClaudeAgent(Agent):
         agg = aggregate_window(files, since_s=anchored_since, midnight_s=midnight_s)
 
         ctx = self._scan_thread_context(files)
+        # Sid -> file path so we can re-walk to extract per-session context %.
+        sid_to_path = {sid: path for path, _, sid in files}
+
         threads = []
         for sid, bill in agg["by_thread"].most_common(20):
             c = ctx.get(sid, {})
+            ctx_pct, ctx_tok, ctx_max = (None, None, None)
+            if path := sid_to_path.get(sid):
+                result = context_usage_for_session(iter_messages(path))
+                if result:
+                    ctx_tok, ctx_max = result
+                    if ctx_max > 0:
+                        ctx_pct = int(ctx_tok * 100 / ctx_max + 0.5)
             threads.append(ThreadInfo(
                 sid=sid, project=agg["thread_proj"].get(sid, "?"),
                 billable=bill, pid=None, active=False,
                 title=c.get("title"), first_msg=c.get("first_msg"),
                 branch=c.get("branch"),
+                context_pct=ctx_pct, context_tokens=ctx_tok, context_max=ctx_max,
             ))
         sid_to_pid, no_sid = self._detect_processes()
         for t in threads:

@@ -231,6 +231,28 @@ def latest_rate_limits_with_ts(msgs: Iterable[dict]) -> Optional[tuple[dict, int
     return last_rl, last_ts
 
 
+def context_usage_for_codex_session(msgs: Iterable[dict]) -> Optional[tuple[int, int]]:
+    """Return (current_context_tokens, model_context_window) for the latest
+    token_count event. `info.model_context_window` is reported by Codex
+    directly; current = last_token_usage.input + cached_input.
+    """
+    last_info = None
+    for m in msgs:
+        if not _is_token_count_event(m):
+            continue
+        info = ((m.get("payload") or {}).get("info")) or {}
+        if info.get("model_context_window"):
+            last_info = info
+    if not last_info:
+        return None
+    last = last_info.get("last_token_usage") or {}
+    cur = (last.get("input_tokens") or 0) + (last.get("cached_input_tokens") or 0)
+    max_ctx = int(last_info.get("model_context_window") or 0)
+    if max_ctx == 0:
+        return None
+    return cur, max_ctx
+
+
 def model_from_session(msgs: Iterable[dict]) -> Optional[str]:
     """Return the model name from the most recent turn_context record.
 
@@ -441,16 +463,31 @@ class CodexAgent(Agent):
                 billable=0, cap=0,
             ))
 
+        # Sid → msgs index for context lookup
+        sid_to_msgs: dict[str, list[dict]] = {}
+        for path, msgs in all_msgs_per_file.items():
+            sid = sid_from_filename(path.name)
+            if sid:
+                sid_to_msgs[sid] = msgs
+
         # Threads list (top 20 by billable)
         sorted_sids = sorted(per_session_bill.items(), key=lambda kv: -kv[1])[:20]
         threads = []
         for sid, bill in sorted_sids:
             ctx = per_session_ctx.get(sid, {})
+            ctx_pct, ctx_tok, ctx_max = (None, None, None)
+            if msgs := sid_to_msgs.get(sid):
+                result = context_usage_for_codex_session(msgs)
+                if result:
+                    ctx_tok, ctx_max = result
+                    if ctx_max > 0:
+                        ctx_pct = int(ctx_tok * 100 / ctx_max + 0.5)
             threads.append(ThreadInfo(
                 sid=sid, project=per_session_proj.get(sid, "?"),
                 billable=bill, pid=None, active=False,
                 title=ctx.get("title"), first_msg=ctx.get("first_msg"),
                 branch=None,
+                context_pct=ctx_pct, context_tokens=ctx_tok, context_max=ctx_max,
             ))
 
         # Detect processes

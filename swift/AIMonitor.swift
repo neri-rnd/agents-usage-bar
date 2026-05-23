@@ -76,12 +76,18 @@ struct ThreadInfo: Codable, Identifiable {
     let title: String?
     let firstMsg: String?
     let branch: String?
+    let contextPct: Int?
+    let contextTokens: Int?
+    let contextMax: Int?
 
     var id: String { sid }
 
     enum CodingKeys: String, CodingKey {
         case sid, project, billable, pid, active, title, branch
         case firstMsg = "first_msg"
+        case contextPct = "context_pct"
+        case contextTokens = "context_tokens"
+        case contextMax = "context_max"
     }
 }
 
@@ -407,6 +413,33 @@ struct ProgressBar: View {
     }
 }
 
+/// Extra usage credits (the "Usage credits" toggle on the Anthropic
+/// dashboard). Only shown when the user opts in.
+struct ExtraCreditsRow: View {
+    let extra: RemoteUsage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Extra credits")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text("\(extra.pct)%")
+                    .font(.system(size: 13, weight: .semibold))
+                    .monospacedDigit()
+            }
+            ProgressBar(pct: extra.pct)
+            HStack {
+                Text("$\(extra.used) of $\(extra.limit) \(extra.ccy)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+    }
+}
+
+
 struct WindowRow: View {
     let window: LimitWindow
 
@@ -522,6 +555,9 @@ struct AgentSection: View {
             }
             ForEach(allWindows, id: \.kind) { w in
                 WindowRow(window: w)
+            }
+            if let extra = agent.extraCredits {
+                ExtraCreditsRow(extra: extra)
             }
             if let err = agent.errors.last {
                 Text(staleMessage(err.code))
@@ -672,6 +708,12 @@ struct ThreadRow: View {
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 50, alignment: .trailing)
+            if let ctx = thread.contextPct {
+                Text("ctx \(ctx)%")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(ctx >= 80 ? .orange : .secondary)
+                    .help(ctxTooltip)
+            }
             Text(label)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -679,6 +721,13 @@ struct ThreadRow: View {
                 .truncationMode(.tail)
             Spacer()
         }
+    }
+
+    private var ctxTooltip: String {
+        guard let tok = thread.contextTokens, let max = thread.contextMax else {
+            return ""
+        }
+        return "\(Format.tokens(tok)) / \(Format.tokens(max)) tokens in context"
     }
 }
 
