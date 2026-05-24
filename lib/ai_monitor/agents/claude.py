@@ -164,6 +164,8 @@ def parse_remote_payload(d: dict) -> dict:
         "seven_day":        win("seven_day", "rolling_7d"),
         "seven_day_sonnet": win("seven_day_sonnet", "rolling_7d_sonnet"),
         "seven_day_opus":   win("seven_day_opus",   "rolling_7d_opus"),
+        # "omelette" is Anthropic's internal codename for Claude Design.
+        "seven_day_design": win("seven_day_omelette", "rolling_7d_design"),
         "extra":            extra,
     }
 
@@ -271,6 +273,7 @@ class ClaudeAgent(Agent):
             "seven_day": None,
             "seven_day_sonnet": None,
             "seven_day_opus": None,
+            "seven_day_design": None,
             "extra": None,
         }
         if not self.remote_disabled:
@@ -341,6 +344,7 @@ class ClaudeAgent(Agent):
                     remote_windows["seven_day"],
                     remote_windows["seven_day_sonnet"],
                     remote_windows["seven_day_opus"],
+                    remote_windows["seven_day_design"],
                 ] if w
             ],
             extra_credits=remote_windows["extra"],

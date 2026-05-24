@@ -262,11 +262,12 @@ enum Format {
 
     static func windowLabel(_ kind: String) -> String {
         switch kind {
-        case "rolling_5h":         return "Current Session"
-        case "rolling_7d", "weekly": return "Weekly"
-        case "rolling_7d_sonnet":  return "Sonnet (weekly)"
-        case "rolling_7d_opus":    return "Opus (weekly)"
-        default:                   return kind
+        case "rolling_5h":           return "Current Session"
+        case "rolling_7d", "weekly": return "Weekly (all models)"
+        case "rolling_7d_sonnet":    return "Sonnet only (weekly)"
+        case "rolling_7d_opus":      return "Opus only (weekly)"
+        case "rolling_7d_design":    return "Claude Design (weekly)"
+        default:                     return kind
         }
     }
 
@@ -277,6 +278,7 @@ enum Format {
         case "rolling_7d", "weekly": return 1
         case "rolling_7d_sonnet":    return 2
         case "rolling_7d_opus":      return 3
+        case "rolling_7d_design":    return 4
         default:                     return 99
         }
     }
@@ -414,14 +416,27 @@ struct ProgressBar: View {
 }
 
 /// Extra usage credits (the "Usage credits" toggle on the Anthropic
-/// dashboard). Only shown when the user opts in.
+/// dashboard). monthly_limit and used_credits arrive in CENTS — divided
+/// by 100 for display.
 struct ExtraCreditsRow: View {
     let extra: RemoteUsage
+
+    private var usedDollars: Double {
+        (Double(extra.used) ?? 0) / 100
+    }
+    private var limitDollars: Double {
+        (Double(extra.limit) ?? 0) / 100
+    }
+    private var amountLine: String {
+        let used  = String(format: "$%.2f", usedDollars)
+        let limit = String(format: "$%.2f", limitDollars)
+        return "\(used) spent / \(limit) \(extra.ccy) monthly limit"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Extra credits")
+                Text("Usage credits")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("\(extra.pct)%")
@@ -429,11 +444,46 @@ struct ExtraCreditsRow: View {
                     .monospacedDigit()
             }
             ProgressBar(pct: extra.pct)
-            HStack {
-                Text("$\(extra.used) of $\(extra.limit) \(extra.ccy)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
+            Text(amountLine)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Expandable "Details ▸" / "Details ▾" section that holds secondary
+/// weekly windows (Sonnet/Opus/Claude Design) and Usage Credits.
+struct AgentDetailsDisclosure: View {
+    let agent: AgentState
+    let detailWindows: [LimitWindow]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: { expanded.toggle() }) {
+                HStack(spacing: 4) {
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("Details")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(detailWindows, id: \.kind) { w in
+                        WindowRow(window: w)
+                    }
+                    if let extra = agent.extraCredits {
+                        ExtraCreditsRow(extra: extra)
+                    }
+                }
+                .padding(.leading, 4)
             }
         }
     }
@@ -532,6 +582,21 @@ struct AgentSection: View {
         return combined.sorted { Format.windowSortKey($0.kind) < Format.windowSortKey($1.kind) }
     }
 
+    /// Always-visible windows: Current Session + the single primary Weekly
+    /// (rolling_7d / weekly, all-models). Anything else (Sonnet-only,
+    /// Opus-only, Claude Design) goes under the Details disclosure.
+    var primaryWindows: [LimitWindow] {
+        allWindows.filter { $0.kind == "rolling_5h" || $0.kind == "rolling_7d" || $0.kind == "weekly" }
+    }
+
+    var detailWindows: [LimitWindow] {
+        allWindows.filter { !["rolling_5h", "rolling_7d", "weekly"].contains($0.kind) }
+    }
+
+    var hasDetails: Bool {
+        !detailWindows.isEmpty || agent.extraCredits != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -553,11 +618,11 @@ struct AgentSection: View {
                         )
                 }
             }
-            ForEach(allWindows, id: \.kind) { w in
+            ForEach(primaryWindows, id: \.kind) { w in
                 WindowRow(window: w)
             }
-            if let extra = agent.extraCredits {
-                ExtraCreditsRow(extra: extra)
+            if hasDetails {
+                AgentDetailsDisclosure(agent: agent, detailWindows: detailWindows)
             }
             if let err = agent.errors.last {
                 Text(staleMessage(err.code))
