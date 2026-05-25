@@ -892,7 +892,7 @@ struct ContentView: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .scrollIndicators(.hidden)
+                .scrollIndicators(.never)
             } else {
                 VStack {
                     if refresher.isRefreshing {
